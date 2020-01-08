@@ -1,0 +1,64 @@
+version: '3'
+networks:
+  traefik_proxy:
+    driver: bridge
+services:
+  reverse-proxy:
+    networks:
+      traefik_proxy:
+        aliases:
+            - mapper.docker.localhost
+    # The official v2.0 Traefik docker image
+    image: traefik:v2.0
+    # Enables the web UI and tells Traefik to listen to docker
+    command: --api.insecure=true --providers.docker
+    ports:
+      # The HTTP port
+      - "80:80"
+      - "8080:8080"
+      - "443:443"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.port=8080"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.frontend.rule=Host:traefik.docker.localhost"
+  portainer:
+    image: portainer/portainer
+    container_name: portainer
+    restart: always
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer/data:/data
+      - ./portainer/shared:/shared
+    networks:
+      - traefik_proxy
+    labels:
+      - "traefik.http.routers.portainer.rule=Host(`portainer.docker.localhost`)"
+  nuxt:
+    networks:
+      - traefik_proxy
+    image: node
+    volumes:
+      - "./front:/src"
+    working_dir: "/src"
+    command: "yarn run dev"
+    ports:
+      - "30001:80"
+    labels:
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.nuxt.rule=Host(`mapper.docker.localhost`)"
+  api:
+    networks:
+      - traefik_proxy
+    build: back
+    volumes:
+      - "./back:/src"
+    working_dir: "/src"
+    ports:
+      - "5000:5000"
+    labels:
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.api.rule=Host(`mapper.docker.localhost`) && PathPrefix(`/api`)"
